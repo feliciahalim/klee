@@ -16,22 +16,46 @@
 //===----------------------------------------------------------------------===//
 
 #include "TxWPHelper.h"
+#include "TxTree.h"
 
 namespace klee {
 
 bool TxWPHelper::isTargetDependent(llvm::Value *inst, ref<Expr> expr) {
   switch (expr->getKind()) {
   case Expr::InvalidKind:
-  case Expr::Constant: {
-    return false;
-  }
+  case Expr::Constant: { return false; }
 
   case Expr::WPVar: {
     ref<WPVarExpr> wp1 = dyn_cast<WPVarExpr>(expr);
-    if (wp1->address == inst) {
+    // if inst is an alloca & empty name
+    // find its corresponding function argument
+    llvm::Value *arg = 0;
+    if (isa<llvm::AllocaInst>(inst)) {
+      llvm::AllocaInst *alc = dyn_cast<llvm::AllocaInst>(inst);
+      if (alc->getName().empty()) {
+        llvm::Instruction *tmp = alc->getNextNode();
+        while (true) {
+          if (isa<llvm::StoreInst>(tmp) && tmp->getOperand(1) == alc) {
+            arg = tmp->getOperand(0);
+            break;
+          } else {
+            tmp = tmp->getNextNode();
+            if (tmp->isTerminator()) {
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (arg && arg == wp1->address) {
       return true;
-    } else
-      return false;
+    } else {
+      if (wp1->address == inst) {
+        return true;
+      } else {
+        return false;
+      }
+    }
   }
 
   case Expr::NotOptimized:
@@ -120,9 +144,7 @@ ref<Expr> TxWPHelper::substituteExpr(ref<Expr> base, const ref<Expr> lhs,
   } else {
     switch (base->getKind()) {
     case Expr::InvalidKind:
-    case Expr::Constant: {
-      return base;
-    }
+    case Expr::Constant: { return base; }
 
     case Expr::WPVar: {
       ref<WPVarExpr> wp1 = dyn_cast<WPVarExpr>(base);
@@ -221,6 +243,34 @@ ref<Expr> TxWPHelper::substituteExpr(ref<Expr> base, const ref<Expr> lhs,
   }
 
   return base;
+}
+
+llvm::Instruction *TxWPHelper::getNearestCallInst(const llvm::Value *ins,
+                                                  TxTreeNode *txNode) {
+  TxTreeNode *tmp = txNode;
+  llvm::Instruction *lastCall = NULL;
+  while (tmp != NULL) {
+    bool found = false;
+    for (std::vector<std::pair<KInstruction *, int> >::iterator
+             it = tmp->reverseInstructionList.begin(),
+             ie = tmp->reverseInstructionList.end();
+         it != ie; ++it) {
+      if (isa<llvm::CallInst>(it->first->inst)) {
+        lastCall = (it->first->inst);
+      }
+      if (ins == it->first->inst) {
+        found = true;
+        break;
+      }
+    }
+
+    if (found) {
+      break;
+    } else {
+      tmp = tmp->getParent();
+    }
+  }
+  return lastCall;
 }
 
 } /* namespace klee */

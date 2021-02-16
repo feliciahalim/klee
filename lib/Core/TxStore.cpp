@@ -301,7 +301,7 @@ TxStore::getAddressofLatestCopyLLVMValue(llvm::Value *val) {
                                      ie = internalStore.end();
        it != ie; ++it) {
     ref<TxAllocationContext> temp = (*it).first;
-    if (temp->getValue() == val) {
+    if (temp->getValue()->getName() == val->getName()) {
       if (!foundValue) {
         address = temp;
         foundValue = true;

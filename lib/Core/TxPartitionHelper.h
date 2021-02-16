@@ -23,6 +23,7 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <string.h>
 
 namespace klee {
 
@@ -35,6 +36,7 @@ public:
   static std::set<std::string> diff(std::set<std::string> ss1,
                                     std::set<std::string> ss2);
   static ref<Expr> createAnd(std::vector<ref<Expr> > exprs);
+  static std::string eliminateShadow(std::string name);
   static void testing(ref<Expr> expr, ExecutionState es);
 };
 }

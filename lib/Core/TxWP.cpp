@@ -35,9 +35,9 @@
 using namespace klee;
 
 typedef std::map<ref<TxVariable>, ref<TxInterpolantValue> >
-    LowerInterpolantStore;
+LowerInterpolantStore;
 typedef std::map<ref<TxAllocationContext>, LowerInterpolantStore>
-    TopInterpolantStore;
+TopInterpolantStore;
 
 TxWeakestPreCondition::TxWeakestPreCondition(TxTreeNode *_node,
                                              TxDependency *_dependency,
@@ -140,6 +140,14 @@ TxSubsumptionTableEntry *TxWeakestPreCondition::updateSubsumptionTableEntry(
   std::set<std::string> wpVars;
   if (!entry->getWPInterpolant().isNull())
     wpVars = TxPartitionHelper::getExprVars(entry->getWPInterpolant());
+  //  std::set<std::string> newWpVars;
+  //  for (std::set<std::string>::iterator it = wpVars.begin(), ie =
+  // wpVars.end();
+  //       it != ie; ++it) {
+  //    newWpVars.insert(*it);
+  //    newWpVars.insert("__shadow__" + (*it));
+  //  }
+  //  wpVars.swap(newWpVars);
 
   // get vars(pi, miu)
   // vars(pi)
@@ -154,30 +162,56 @@ TxSubsumptionTableEntry *TxWeakestPreCondition::updateSubsumptionTableEntry(
            it1 = concretelyAddressedStore.begin(),
            ie1 = concretelyAddressedStore.end();
        it1 != ie1; ++it1) {
-    if (strcmp(it1->first->getValue()->getName().data(), "") != 0) {
-      pimiuVars.insert(it1->first->getValue()->getName().data());
-      std::set<std::string> right = TxPartitionHelper::getExprVars(
-          it1->second.begin()->second->getExpression());
-      pimiuVars.insert(right.begin(), right.end());
+    std::string name;
+    if (it1->first->getValue()->getName().empty()) {
+      name = TxWPHelper::getNoNameInst(it1->first->getValue());
+    } else {
+      name = it1->first->getValue()->getName().str();
     }
+    pimiuVars.insert(name);
+    std::set<std::string> right = TxPartitionHelper::getExprVars(
+        it1->second.begin()->second->getExpression());
+    pimiuVars.insert(right.begin(), right.end());
   }
 
   // add normal names of __shadow__ variables
-  std::set<std::string> pimiuVars2;
-  for (std::set<std::string>::iterator it1 = pimiuVars.begin(),
-                                       ie1 = pimiuVars.end();
-       it1 != ie1; ++it1) {
-    // keep both normal & __shadow__
-    pimiuVars2.insert((*it1));
-    std::string toErase = "__shadow__";
-    size_t pos = (*it1).find(toErase);
-    if (pos == std::string::npos) {
-      pimiuVars2.insert(*it1);
-    }
-  }
+  //  std::set<std::string> pimiuVars2;
+  //  for (std::set<std::string>::iterator it1 = pimiuVars.begin(),
+  //                                       ie1 = pimiuVars.end();
+  //       it1 != ie1; ++it1) {
+  //    // keep both normal & __shadow__
+  //    pimiuVars2.insert((*it1));
+  //    std::string toErase = "__shadow__";
+  //    size_t pos = (*it1).find(toErase);
+  //    if (pos == std::string::npos) {
+  //      pimiuVars2.insert(*it1);
+  //    }
+  //  }
 
   // get v1 = vars(pi,miu) - vars(w)
-  std::set<std::string> v1 = TxPartitionHelper::diff(pimiuVars2, wpVars);
+  std::set<std::string> v1 = TxPartitionHelper::diff(pimiuVars, wpVars);
+
+  //  llvm::errs() << "Vars(pi,miu):\n";
+  //  for (std::set<std::string>::iterator it = pimiuVars.begin(),
+  //                                       ie = pimiuVars.end();
+  //       it != ie; ++it) {
+  //    llvm::errs() << (*it) << "; ";
+  //  }
+  //  llvm::errs() << "\n-------------\n";
+  //  llvm::errs() << "Vars(w):\n";
+  //  for (std::set<std::string>::iterator it = wpVars.begin(), ie =
+  // wpVars.end();
+  //       it != ie; ++it) {
+  //    llvm::errs() << (*it) << "; ";
+  //  }
+  //  llvm::errs() << "\n-------------\n";
+  //  llvm::errs() << "Vars(v1) = Vars(pi,miu) - Vars(w):\n";
+  //  for (std::set<std::string>::iterator it = v1.begin(), ie = v1.end(); it !=
+  // ie;
+  //       ++it) {
+  //    llvm::errs() << (*it) << "; ";
+  //  }
+  //  llvm::errs() << "\n-------------\n";
 
   // closure(pi,miu,v1)
   std::set<std::string> v1star = v1;
@@ -199,19 +233,37 @@ TxSubsumptionTableEntry *TxWeakestPreCondition::updateSubsumptionTableEntry(
            ie1 = concretelyAddressedStore.end();
        it1 != ie1; ++it1) {
     std::set<std::string> tmp;
-    if (strcmp(it1->first->getValue()->getName().data(), "") == 0) {
-      tmp.insert(it1->first->getValue()->getName().data());
-      std::set<std::string> right = TxPartitionHelper::getExprVars(
-          it1->second.begin()->second->getExpression());
-      tmp.insert(right.begin(), right.end());
-      if (TxPartitionHelper::isShared(tmp, v1star)) {
-        v1star.insert(tmp.begin(), tmp.end());
-      }
+    std::string name;
+    if (it1->first->getValue()->getName().empty()) {
+      name = TxWPHelper::getNoNameInst(it1->first->getValue());
+    } else {
+      name = it1->first->getValue()->getName().str();
+    }
+    tmp.insert(name);
+    std::set<std::string> right = TxPartitionHelper::getExprVars(
+        it1->second.begin()->second->getExpression());
+    tmp.insert(right.begin(), right.end());
+    if (TxPartitionHelper::isShared(tmp, v1star)) {
+      v1star.insert(tmp.begin(), tmp.end());
     }
   }
 
   // v2
   std::set<std::string> v2 = TxPartitionHelper::diff(wpVars, v1star);
+
+  //  llvm::errs() << "Vars(v1star) = Closure(pi,miu, v1):\n";
+  //  for (std::set<std::string>::iterator it = v1star.begin(), ie =
+  // v1star.end();
+  //       it != ie; ++it) {
+  //    llvm::errs() << (*it) << "; ";
+  //  }
+  //  llvm::errs() << "\n-------------\n";
+  //  llvm::errs() << "Vars(v2) = Vars(w) − Vars(v1star):\n";
+  //  for (std::set<std::string>::iterator it = v2.begin(), ie = v2.end();
+  //       it != ie; ++it) {
+  //    llvm::errs() << (*it) << "; ";
+  //  }
+  //  llvm::errs() << "\n-------------\n";
 
   // update pi by (wp,v2) and (pi,v1star)
   std::vector<ref<Expr> > wpComps =
@@ -250,14 +302,18 @@ TxSubsumptionTableEntry *TxWeakestPreCondition::updateSubsumptionTableEntry(
            ie1 = concretelyAddressedStore.end();
        it1 != ie1; ++it1) {
     std::set<std::string> tmp;
-    if (strcmp(it1->first->getValue()->getName().data(), "") != 0) {
-      tmp.insert(it1->first->getValue()->getName().data());
-      std::set<std::string> right = TxPartitionHelper::getExprVars(
-          it1->second.begin()->second->getExpression());
-      tmp.insert(right.begin(), right.end());
-      if (!TxPartitionHelper::isShared(tmp, v1star)) {
-        dels.insert(it1->first);
-      }
+    std::string name;
+    if (it1->first->getValue()->getName().empty()) {
+      name = TxWPHelper::getNoNameInst(it1->first->getValue());
+    } else {
+      name = it1->first->getValue()->getName().str();
+    }
+    tmp.insert(name);
+    std::set<std::string> right = TxPartitionHelper::getExprVars(
+        it1->second.begin()->second->getExpression());
+    tmp.insert(right.begin(), right.end());
+    if (!TxPartitionHelper::isShared(tmp, v1star)) {
+      dels.insert(it1->first);
     }
   }
   for (std::set<ref<TxAllocationContext> >::iterator it = dels.begin(),
@@ -279,6 +335,9 @@ TxSubsumptionTableEntry *TxWeakestPreCondition::updateSubsumptionTableEntry(
  */
 ref<Expr> TxWeakestPreCondition::PushUp(
     std::vector<std::pair<KInstruction *, int> > reverseInstructionList) {
+  //  llvm::errs() << "Start PushUp \n";
+  //  WPExpr->dump();
+  //  llvm::errs() << "-----\n";
 
   for (std::vector<std::pair<KInstruction *, int> >::const_reverse_iterator
            it = reverseInstructionList.rbegin(),
@@ -286,6 +345,9 @@ ref<Expr> TxWeakestPreCondition::PushUp(
        it != ie; ++it) {
     llvm::Instruction *i = (*it).first->inst;
     int flag = (*it).second;
+    //    llvm::errs() << "Start 1 loop ---\n";
+    //    i->dump();
+    //    llvm::errs() << "flag=" << flag << "\n";
     if (flag == 1) {
       // 1- call getCondition on the cond argument of the branch instruction
       // 2- create and expression from the condition and this->WPExpr
@@ -295,11 +357,6 @@ ref<Expr> TxWeakestPreCondition::PushUp(
         return WPExpr;
       }
       ref<Expr> cond = result;
-
-      //      llvm::outs() << "****** Flag = 1 ******\n";
-      //      cond->dump();
-      //      llvm::outs() << "****** End Flag = 1 ******\n";
-
       if (True() == WPExpr) {
         WPExpr = cond;
       } else {
@@ -310,7 +367,6 @@ ref<Expr> TxWeakestPreCondition::PushUp(
 
         WPExpr = AndExpr::create(WPExpr, cond);
       }
-
     } else if (flag == 2) {
       // 1- call getCondition on the cond argument of the branch instruction
       // 2- generate not(condition): expr::not(condition)
@@ -321,10 +377,6 @@ ref<Expr> TxWeakestPreCondition::PushUp(
         return WPExpr;
       }
       ref<Expr> negCond = NotExpr::create(result);
-      //      llvm::outs() << "****** Flag = 2 ******\n";
-      //      negCond->dump();
-      //      llvm::outs() << "****** End Flag = 2 ******\n";
-
       if (True() == WPExpr) {
         WPExpr = negCond;
       } else {
@@ -335,24 +387,16 @@ ref<Expr> TxWeakestPreCondition::PushUp(
 
         WPExpr = AndExpr::create(WPExpr, negCond);
       }
-
     } else if (i->getOpcode() == llvm::Instruction::Store) {
       if (TxWPHelper::isTargetDependent(i->getOperand(1), WPExpr)) {
         ref<Expr> left = this->generateExprFromOperand(i->getOperand(0));
         ref<Expr> right = this->generateExprFromOperand(i->getOperand(1));
-
         if (left.isNull() || right.isNull()) {
           ref<Expr> result;
           return result;
         }
-
         WPExpr = TxWPHelper::substituteExpr(WPExpr, right, left);
-        //        llvm::outs() << "****** Flag = 0 *******\n";
-        //        WPExpr->dump();
-        //        llvm::outs() << "------\n";
         WPExpr = Z3Simplification::simplify(WPExpr);
-        //        WPExpr->dump();
-        //        llvm::outs() << "******* End Flag = 0 *******\n";
       } else if (isa<llvm::GetElementPtrInst>(
                      i->getOperand(1))) { // Update Array
         llvm::GetElementPtrInst *parentGEP =
@@ -372,16 +416,43 @@ ref<Expr> TxWeakestPreCondition::PushUp(
         if (val.isNull())
           return val;
         ref<Expr> update = UpdExpr::create(pair.second, pair.first, val);
-        //        llvm::outs() << "****** Flag = 0 for Update Array *******\n";
-        //        i->dump();
-        //        WPExpr->dump();
         WPExpr = TxWPHelper::substituteExpr(WPExpr, pair.second, update);
-        //        WPExpr->dump();
-        //        llvm::outs() << "****** End Flag = 0 for Update Array
-        // *******\n";
+      }
+    } else if (i->getOpcode() == llvm::Instruction::Call) {
+      llvm::CallInst *callInst = dyn_cast<llvm::CallInst>(i);
+      bool isignore = 1;
+      if (!callInst && !callInst->getCalledFunction() &&
+          !callInst->getCalledFunction()->getName().empty()) {
+        std::string fname = callInst->getCalledFunction()->getName().data();
+        isignore = TxWPHelper::isSkipPushUp(fname);
+      }
+      if (!isignore) {
+        std::vector<ref<Expr> > passedVals;
+        for (unsigned u = 0; u < callInst->getNumArgOperands(); ++u) {
+          passedVals.push_back(
+              generateExprFromOperand(callInst->getArgOperand(u)));
+        }
+        std::vector<ref<Expr> > args;
+        for (llvm::Function::arg_iterator
+                 ait = callInst->getCalledFunction()->getArgumentList().begin(),
+                 aie = callInst->getCalledFunction()->getArgumentList().end();
+             ait != aie; ++ait) {
+          args.push_back(generateExprFromOperand(ait));
+        }
+        for (unsigned u = 0; u < passedVals.size(); ++u) {
+          WPExpr = TxWPHelper::substituteExpr(WPExpr, args[u], passedVals[u]);
+        }
       }
     }
+
+    //    WPExpr->dump();
+    //    llvm::errs() << "End 1 loop ---\n";
   }
+
+  //  llvm::errs() << "End PushUp \n";
+  //  WPExpr->dump();
+  //  llvm::errs() << "-----\n";
+
   return WPExpr;
 }
 
@@ -558,7 +629,7 @@ ref<Expr> TxWeakestPreCondition::getConstantFP(llvm::ConstantFP *CI) {
 ref<Expr> TxWeakestPreCondition::getConstantExpr(llvm::ConstantExpr *ce) {
   ref<Expr> result;
   // klee_warning("PUSHUP1");
-  return result;
+  //  return result;
 
   switch (ce->getOpcode()) {
   case llvm::Instruction::GetElementPtr: {
@@ -568,9 +639,8 @@ ref<Expr> TxWeakestPreCondition::getConstantExpr(llvm::ConstantExpr *ce) {
       return idx;
     unsigned width = idx->getWidth();
     unsigned dimension = ce->getNumOperands() - 2;
-    llvm::ArrayType *at = dyn_cast<llvm::ArrayType>(
-        dyn_cast<llvm::PointerType>(ce->getOperand(0)->getType())
-            ->getElementType());
+    llvm::ArrayType *at = dyn_cast<llvm::ArrayType>(dyn_cast<llvm::PointerType>(
+        ce->getOperand(0)->getType())->getElementType());
     for (unsigned i = 0; i < dimension - 1; i++) {
       at = dyn_cast<llvm::ArrayType>(at->getElementType());
       ref<Expr> tmp1 = ConstantExpr::create(at->getNumElements(), width);
@@ -612,7 +682,6 @@ ref<Expr> TxWeakestPreCondition::getFunctionArgument(llvm::Argument *arg) {
   unsigned width;
   ref<Expr> index, result;
   // klee_warning("PUSHUP2");
-  return result;
   width = getFunctionArgumentSize(arg);
   index = ConstantExpr::create(0, width);
   result = WPVarExpr::create(arg, arg->getName(), index);
@@ -623,7 +692,7 @@ std::pair<ref<Expr>, ref<Expr> >
 TxWeakestPreCondition::getPointer(llvm::GetElementPtrInst *gep) {
   std::pair<ref<Expr>, ref<Expr> > pair;
   // klee_warning("PUSHUP3");
-  return pair;
+  //  return pair;
   if (isa<llvm::GetElementPtrInst>(gep->getOperand(0))) {
     llvm::GetElementPtrInst *parentGEP =
         dyn_cast<llvm::GetElementPtrInst>(gep->getOperand(0));
@@ -678,10 +747,22 @@ ref<Expr> TxWeakestPreCondition::getLoad(llvm::LoadInst *p) {
   ref<Expr> index, result;
   if (isa<llvm::AllocaInst>(p->getOperand(0))) {
     llvm::AllocaInst *alc = dyn_cast<llvm::AllocaInst>(p->getOperand(0));
+    int nthParamAlloca = TxWPHelper::isParamAlloca(alc);
+    // is param alloca
+    if (nthParamAlloca != -1) {
+      // generate WP of corresponding function's argument
+      return generateExprFromOperand(
+          TxWPHelper::getnthArgument(alc, nthParamAlloca));
+    }
+    std::string name;
+    if (TxWPHelper::isRetAlloca(alc)) { // return alloca
+      name = TxWPHelper::getNoNameInst(alc);
+    } else {
+      name = alc->getName().str();
+    }
     width = getAllocaInstSize(alc);
     index = ConstantExpr::create(0, width);
-    result =
-        WPVarExpr::create(p->getOperand(0), p->getOperand(0)->getName(), index);
+    result = WPVarExpr::create(alc, name, index);
   } else if (isa<llvm::GlobalValue>(p->getOperand(0))) {
     llvm::GlobalValue *gv = dyn_cast<llvm::GlobalValue>(p->getOperand(0));
     width = getGlobalVariabletSize(gv);
@@ -698,9 +779,22 @@ ref<Expr> TxWeakestPreCondition::getLoad(llvm::LoadInst *p) {
 ref<Expr> TxWeakestPreCondition::getAllocaInst(llvm::AllocaInst *alc) {
   unsigned width;
   ref<Expr> index, result;
+  int nthParamAlloca = TxWPHelper::isParamAlloca(alc);
+  // is param alloca
+  if (nthParamAlloca != -1) {
+    return generateExprFromOperand(
+        TxWPHelper::getnthArgument(alc, nthParamAlloca));
+  }
+  std::string name;
+  if (TxWPHelper::isRetAlloca(alc)) { // return alloca
+    name = TxWPHelper::getNoNameInst(alc);
+  } else {
+    name = alc->getName().str();
+  }
   width = getAllocaInstSize(alc);
   index = ConstantExpr::create(0, width);
-  result = WPVarExpr::create(alc, alc->getName(), index);
+  result = WPVarExpr::create(alc, name, index);
+
   return result;
 }
 
@@ -947,17 +1041,14 @@ ref<Expr> TxWeakestPreCondition::getCmpCondition(llvm::CmpInst *cmp) {
 
 ref<Expr> TxWeakestPreCondition::getGepInst(llvm::GetElementPtrInst *gep) {
   ref<Expr> result;
-  /*
   gep->dump();
-  if (gep->getNumOperands() == 2){
-          gep->getOperand(0)->dump();
-          gep->getOperand(1)->dump();
-          ref<Expr> offset = this->generateExprFromOperand(gep->getOperand(1));
-          offset->dump();
-          result = this->generateExprFromOperand(gep->getOperand(0));
-
-
-  }*/
+  if (gep->getNumOperands() == 2) {
+    gep->getOperand(0)->dump();
+    gep->getOperand(1)->dump();
+    ref<Expr> offset = this->generateExprFromOperand(gep->getOperand(1));
+    offset->dump();
+    result = this->generateExprFromOperand(gep->getOperand(0));
+  }
   // klee_warning("PUSHUP5");
   return result;
 }
@@ -1060,6 +1151,8 @@ TxWeakestPreCondition::getGlobalVariabletSize(llvm::GlobalValue *gv) {
     size = Expr::Int16;
   } else if (gv->getType()->getElementType()->isIntegerTy(32)) {
     size = Expr::Int32;
+  } else if (gv->getType()->getElementType()->isIntegerTy(64)) {
+    size = Expr::Int64;
   } else if (gv->getType()->getElementType()->isPointerTy()) {
     size = Expr::Int32;
   } else if (gv->getType()->getElementType()->isArrayTy()) {
@@ -1072,6 +1165,8 @@ TxWeakestPreCondition::getGlobalVariabletSize(llvm::GlobalValue *gv) {
     size = Expr::Int16;
   } else if (gv->getType()->isIntegerTy(32)) {
     size = Expr::Int32;
+  } else if (gv->getType()->isIntegerTy(64)) {
+    size = Expr::Int64;
   } else if (gv->getType()->isPointerTy()) {
     size = Expr::Int32;
   } else if (gv->getType()->isArrayTy()) {
@@ -1099,13 +1194,17 @@ TxWeakestPreCondition::getFunctionArgumentSize(llvm::Argument *arg) {
     size = Expr::Int16;
   } else if (arg->getType()->isIntegerTy(32)) {
     size = Expr::Int32;
+  } else if (arg->getType()->isIntegerTy(64)) {
+    size = Expr::Int64;
   } else if (arg->getType()->isPointerTy()) {
+    size = Expr::Int32;
+  } else if (arg->getType()->isArrayTy()) {
     size = Expr::Int32;
   } else {
     arg->dump();
     arg->getType()->dump();
     klee_error(
-        "TxWeakestPreCondition::getGlobalVariabletSize getting size is not "
+        "TxWeakestPreCondition::getFunctionArgumentSize getting size is not "
         "defined for this type yet");
   }
   return size;
@@ -1122,6 +1221,8 @@ unsigned int TxWeakestPreCondition::getGepSize(llvm::Type *ty) {
     size = Expr::Int16;
   } else if (ty->isIntegerTy(32)) {
     size = Expr::Int32;
+  } else if (ty->isIntegerTy(64)) {
+    size = Expr::Int64;
   } else if (ty->isPointerTy()) {
     size = getGepSize(ty->getPointerElementType());
   } else {

@@ -868,8 +868,14 @@ bool TxSubsumptionTableEntry::subsumed(
         state.txTreeNode->instantiateWPatSubsumption(
             wpInterpolant, state.txTreeNode->getDependency());
 
-    if (wpInstantiatedInterpolant.isNull())
+    if (wpInstantiatedInterpolant.isNull()) {
+      if (debugSubsumptionLevel >= 1) {
+        klee_message("#%lu=>#%lu: WP check filed, WP instantiation failed",
+                     state.txTreeNode->getNodeSequenceNumber(),
+                     nodeSequenceNumber);
+      }
       return false;
+    }
 
     ref<Expr> wpBoolean =
         ZExtExpr::create(wpInstantiatedInterpolant, Expr::Bool);
@@ -2393,12 +2399,16 @@ void TxTree::remove(ExecutionState *state, TimingSolver *solver, bool dumping) {
       TxSubsumptionTableEntry *entry =
           new TxSubsumptionTableEntry(node, node->entryCallHistory);
 
+      //      llvm::errs() << "UpdateSubsumptionTableEntry --- \n";
+      //      entry->dump();
+      //      llvm::errs() << "--------------------------------\n";
       if (WPInterpolant) {
         ref<Expr> WPExpr = entry->getWPInterpolant();
         if (!WPExpr.isNull()) {
           entry = node->wp->updateSubsumptionTableEntry(entry);
         }
       }
+      //      llvm::errs() << "End UpdateSubsumptionTableEntry --- \n";
 
       TxSubsumptionTable::insert(node->getProgramPoint(),
                                  node->entryCallHistory, entry);
@@ -2834,8 +2844,8 @@ ref<Expr> TxTreeNode::instantiateWPatSubsumption(ref<Expr> wpInterpolant,
     }
     // wpInterpolant->dump();
     // dependency->getStore()->dump();
-    klee_warning(
-        "TxTreeNode::instantiateWPatSubsumption: Instantiation failed!");
+//    klee_warning(
+//        "TxTreeNode::instantiateWPatSubsumption: Instantiation WPVar failed!");
     ref<Expr> dummy;
     return dummy;
 
@@ -2927,6 +2937,12 @@ ref<Expr> TxTreeNode::instantiateWPatSubsumption(ref<Expr> wpInterpolant,
     if (kids[1].isNull())
       return kids[1];
 
+    if (!isa<ConstantExpr>(kids[1])) {
+      ref<Expr> nilexp;
+      return nilexp;
+      // return SelExpr::create(kids[0], kids[1]);
+    }
+
     ref<WPVarExpr> WPVar = dyn_cast<WPVarExpr>(wpInterpolant->getKid(0));
 
     ref<TxAllocationContext> alc =
@@ -2955,8 +2971,13 @@ ref<Expr> TxTreeNode::instantiateWPatSubsumption(ref<Expr> wpInterpolant,
               entry->getContent()->getExpression(), wpInterpolant->getWidth());
           return result;
         }
+      } else {
+        ref<Expr> nullref;
+        return nullref;
       }
     } else {
+      ref<Expr> nullref;
+      return nullref;
     }
 
     wpInterpolant->dump();

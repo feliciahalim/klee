@@ -47,13 +47,13 @@ std::set<std::string> TxPartitionHelper::getExprVars(ref<Expr> expr) {
 
   case Expr::WPVar: {
     ref<WPVarExpr> WPVar = dyn_cast<WPVarExpr>(expr);
-    vars.insert(WPVar->address->getName());
+    vars.insert(eliminateShadow(WPVar->name));
     return vars;
   }
 
   case Expr::Read: {
     ref<ReadExpr> readExpr = dyn_cast<ReadExpr>(expr);
-    vars.insert(readExpr->getName());
+    vars.insert(eliminateShadow(readExpr->getName()));
     return vars;
   }
 
@@ -215,6 +215,14 @@ ref<Expr> TxPartitionHelper::createAnd(std::vector<ref<Expr> > exprs) {
     }
   }
   return result;
+}
+
+std::string TxPartitionHelper::eliminateShadow(std::string name) {
+  if (name.substr(0, 10) == "__shadow__") {
+//	llvm::errs() << "__shadow__ found: " << name << "\n";
+	return name.substr(10, name.size()-10);
+  }
+  return name;
 }
 
 void TxPartitionHelper::testing(ref<Expr> expr, ExecutionState es) {

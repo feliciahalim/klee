@@ -34,8 +34,10 @@ ref<Expr> Z3Simplification::simplify(ref<Expr> txe) {
     z3e = applyTactic(c, "simplify", z3e);
     z3e = applyTactic(c, "ctx-solver-simplify", z3e);
     ref<Expr> ret = z3Expr2TxExpr(z3e, emap);
+
     return ret;
   }
+
   return txe;
 }
 
@@ -69,7 +71,7 @@ bool Z3Simplification::txExpr2z3Expr(z3::expr &z3e, z3::context &c,
 
   switch (txe->getKind()) {
   case Expr::Constant: {
-    unsigned int val = dyn_cast<ConstantExpr>(txe)->getZExtValue();
+    int val = dyn_cast<ConstantExpr>(txe)->getAPValue().getSExtValue();
     unsigned int size = txe->getWidth();
     switch (size) {
     case Expr::Bool:
@@ -309,7 +311,6 @@ Z3Simplification::z3Expr2TxExpr(z3::expr e,
     std::string name = e.decl().name().str();
     if (name == "Int") {
       if (e.get_numeral_int() < 0) {
-
         int absVal = abs(e.get_numeral_int());
         ref<ConstantExpr> val = ConstantExpr::create(absVal, Expr::Int32);
         return SubExpr::create(ConstantExpr::create(0, Expr::Int32), val);
@@ -336,13 +337,32 @@ Z3Simplification::z3Expr2TxExpr(z3::expr e,
   } else if (e.is_app()) {
     std::string symbol = e.decl().name().str();
     if (symbol == "+") {
-      ref<Expr> l = z3Expr2TxExpr(e.arg(0), emap);
-      ref<Expr> r = z3Expr2TxExpr(e.arg(1), emap);
-      unsigned max =
-          l->getWidth() > r->getWidth() ? l->getWidth() : r->getWidth();
-      l = (l->getWidth() == max) ? l : ZExtExpr::create(l, max);
-      r = (r->getWidth() == max) ? r : ZExtExpr::create(r, max);
-      return AddExpr::create(l, r);
+      unsigned size = e.num_args();
+      ref<Expr> childs[size];
+      // convert
+      for (unsigned i = 0; i < size; ++i) {
+        childs[i] = z3Expr2TxExpr(e.arg(i), emap);
+      }
+      // find max len
+      unsigned max = childs[0]->getWidth();
+      for (unsigned i = 1; i < size; ++i) {
+        if (childs[i]->getWidth() > max) {
+          max = childs[i]->getWidth();
+        }
+      }
+      // extend to make lens equal
+      for (unsigned i = 0; i < size; ++i) {
+        childs[i] = (childs[i]->getWidth() == max)
+                        ? childs[i]
+                        : ZExtExpr::create(childs[i], max);
+      }
+      // and all
+
+      ref<Expr> tmp = AddExpr::create(childs[0], childs[1]);
+      for (unsigned i = 2; i < size; ++i) {
+        tmp = AddExpr::create(tmp, childs[i]);
+      }
+      return tmp;
     } else if (symbol == "-") {
       ref<Expr> l = z3Expr2TxExpr(e.arg(0), emap);
       ref<Expr> r = z3Expr2TxExpr(e.arg(1), emap);
